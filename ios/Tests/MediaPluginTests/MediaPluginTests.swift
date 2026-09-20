@@ -2,24 +2,25 @@ import XCTest
 @testable import MediaPlugin
 
 class MediaTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    func testPluginIsRegisteredUnderItsJavaScriptName() {
+        let plugin = MediaPlugin()
+
+        XCTAssertEqual(plugin.identifier, "MediaPlugin")
+        XCTAssertEqual(plugin.jsName, "Media")
     }
 
-    override func tearDown() {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-        super.tearDown()
-    }
+    func testPluginExposesItsMethodsAsPromises() {
+        let plugin = MediaPlugin()
 
-    func testEcho() {
-        // This is an example of a functional test case for a plugin.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-
-        let implementation = Media()
-        let value = "Hello, World!"
-        let result = implementation.echo(value)
-
-        XCTAssertEqual(value, result)
+        XCTAssertEqual(plugin.pluginMethods.map(\.name), [
+            "getMedias",
+            "getMediaByIdentifier",
+            "getAlbums",
+            "createAlbum",
+            "savePhoto",
+            "saveVideo",
+            "getAlbumsPath"
+        ])
+        XCTAssertTrue(plugin.pluginMethods.allSatisfy { $0.returnType == .promise })
     }
 }

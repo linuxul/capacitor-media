@@ -31,13 +31,13 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "MediaPlugin"
     public let jsName = "Media"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getMedias", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getMediaByIdentifier", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getAlbums", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "createAlbum", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "savePhoto", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "saveVideo", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getAlbumsPath", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getMedias", returnType: .promise),
+        CAPPluginMethod(name: "getMediaByIdentifier", returnType: .promise),
+        CAPPluginMethod(name: "getAlbums", returnType: .promise),
+        CAPPluginMethod(name: "createAlbum", returnType: .promise),
+        CAPPluginMethod(name: "savePhoto", returnType: .promise),
+        CAPPluginMethod(name: "saveVideo", returnType: .promise),
+        CAPPluginMethod(name: "getAlbumsPath", returnType: .promise),
     ]
     typealias JSObject = [String:Any]
     static let DEFAULT_QUANTITY = 25
@@ -359,7 +359,6 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
         call.unimplemented("Not implemented on iOS.")
     }
     
-    @available(iOS 14, *)
     func getPHAccessLevel(permission: AccessLevel) -> PHAccessLevel {
         switch (permission) {
         case .addOnly:
@@ -370,12 +369,7 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     func checkAuthorization(permission: AccessLevel, allowed: @escaping () -> Void, notAllowed: @escaping () -> Void) {
-        var status = PHAuthorizationStatus.notDetermined
-        if #available(iOS 14, *) {
-            status = PHPhotoLibrary.authorizationStatus(for: getPHAccessLevel(permission: permission))
-        } else {
-            status = PHPhotoLibrary.authorizationStatus()
-        }
+        let status = PHPhotoLibrary.authorizationStatus(for: getPHAccessLevel(permission: permission))
         
         if status == PHAuthorizationStatus.authorized {
             allowed()
@@ -388,11 +382,7 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
             }
             
-            if #available(iOS 14, *) {
-                PHPhotoLibrary.requestAuthorization(for: getPHAccessLevel(permission: permission), handler: handler)
-            } else {
-                PHPhotoLibrary.requestAuthorization(handler)
-            }
+            PHPhotoLibrary.requestAuthorization(for: getPHAccessLevel(permission: permission), handler: handler)
         }
     }
 

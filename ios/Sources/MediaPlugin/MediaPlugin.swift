@@ -31,13 +31,13 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "MediaPlugin"
     public let jsName = "Media"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getMedias", returnType: .promise),
-        CAPPluginMethod(name: "getMediaByIdentifier", returnType: .promise),
-        CAPPluginMethod(name: "getAlbums", returnType: .promise),
-        CAPPluginMethod(name: "createAlbum", returnType: .promise),
-        CAPPluginMethod(name: "savePhoto", returnType: .promise),
-        CAPPluginMethod(name: "saveVideo", returnType: .promise),
-        CAPPluginMethod(name: "getAlbumsPath", returnType: .promise),
+        .promise("getMedias", MediaPlugin.getMedias),
+        .promise("getMediaByIdentifier", MediaPlugin.getMediaByIdentifier),
+        .async("getAlbums", MediaPlugin.getAlbums),
+        .async("createAlbum", MediaPlugin.createAlbum),
+        .promise("savePhoto", MediaPlugin.savePhoto),
+        .promise("saveVideo", MediaPlugin.saveVideo),
+        .promise("getAlbumsPath", MediaPlugin.getAlbumsPath)
     ]
     typealias JSObject = [String:Any]
     static let DEFAULT_QUANTITY = 25
@@ -55,15 +55,17 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
         return nil
     }
 
-    @objc func getAlbums(_ call: CAPPluginCall) {
-        checkAuthorization(permission: .readWrite, allowed: {
-            self.fetchAlbumsToJs(call)
-        }, notAllowed: {
-            call.reject("Access to photos not allowed by user", EC_ACCESS_DENIED)
-        })
+    /// Waits for photo library access, then lists the albums.
+    func getAlbums(_ call: CAPPluginCall) async throws {
+        try await requireAuthorization(permission: .readWrite)
+        self.fetchAlbumsToJs(call)
     }
 
-    @objc func getMedias(_ call: CAPPluginCall) {
+    // getMedias, getMediaByIdentifier, savePhoto and saveVideo stay synchronous methods that answer from completion
+    // handlers: getMedias requests its thumbnails synchronously (from iCloud when needed) and saveVideo waits for its
+    // download on a semaphore, which must not block a Swift concurrency thread; savePhoto downloads with SDWebImage.
+
+    func getMedias(_ call: CAPPluginCall) {
         checkAuthorization(permission: .readWrite, allowed: {
             self.fetchResultAssetsToJs(call)
         }, notAllowed: {
@@ -71,7 +73,7 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
         })
     }
 
-    @objc func getMediaByIdentifier(_ call: CAPPluginCall) {
+    func getMediaByIdentifier(_ call: CAPPluginCall) {
         checkAuthorization(permission: .readWrite, allowed: {
             guard let identifier = call.getString("identifier") else {
                 call.reject("Must provide an identifier", EC_ARG_ERROR)
@@ -146,31 +148,25 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
         })
     }
 
-    @objc func createAlbum(_ call: CAPPluginCall) {
+    /// Waits for photo library access, then creates the album and returns when the library has saved it.
+    func createAlbum(_ call: CAPPluginCall) async throws {
         guard let name = call.getString("name") else {
-            call.reject("Must provide a name", EC_ARG_ERROR)
-            return
+            throw CAPPluginError("Must provide a name", code: EC_ARG_ERROR)
         }
 
-        checkAuthorization(permission: .readWrite, allowed: {
-            PHPhotoLibrary.shared().performChanges({
+        try await requireAuthorization(permission: .readWrite)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
                 PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
-            }, completionHandler: { success, error in
-                if !success {
-                    call.reject("Unable to create album: \(error?.localizedDescription ?? "Unknown error")", EC_FS_ERROR)
-                    return
-                }
-                call.resolve()
-            })
-        }, notAllowed: {
-            call.reject("Access to photos not allowed by user", EC_ACCESS_DENIED)
-        })
+            }
+        } catch {
+            throw CAPPluginError("Unable to create album: \(error.localizedDescription)", code: EC_FS_ERROR)
+        }
     }
 
-    @objc func savePhoto(_ call: CAPPluginCall) {
+    func savePhoto(_ call: CAPPluginCall) throws {
         guard let data = call.getString("path") else {
-            call.reject("Must provide the data path", EC_ARG_ERROR)
-            return
+            throw CAPPluginError("Must provide the data path", code: EC_ARG_ERROR)
         }
 
         let albumId = call.getString("albumIdentifier")
@@ -182,12 +178,10 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
                 targetCollection = collection
             })
             if targetCollection == nil {
-                call.reject("Unable to find that album", EC_ARG_ERROR)
-                return
+                throw CAPPluginError("Unable to find that album", code: EC_ARG_ERROR)
             }
             if !targetCollection!.canPerform(.addContent) {
-                call.reject("Album doesn't support adding content (is this a smart album?)", EC_ARG_ERROR)
-                return
+                throw CAPPluginError("Album doesn't support adding content (is this a smart album?)", code: EC_ARG_ERROR)
             }
         }
 
@@ -228,10 +222,9 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
 
     }
 
-    @objc func saveVideo(_ call: CAPPluginCall) {
+    func saveVideo(_ call: CAPPluginCall) throws {
         guard let pathData = call.getString("path") else {
-            call.reject("Must provide the data path", EC_ARG_ERROR)
-            return
+            throw CAPPluginError("Must provide the data path", code: EC_ARG_ERROR)
         }
 
         let albumId = call.getString("albumIdentifier")
@@ -243,12 +236,10 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
                 targetCollection = collection
             })
             if targetCollection == nil {
-                call.reject("Unable to find that album", EC_ARG_ERROR)
-                return
+                throw CAPPluginError("Unable to find that album", code: EC_ARG_ERROR)
             }
             if !targetCollection!.canPerform(.addContent) {
-                call.reject("Album doesn't support adding content (is this a smart album?)", EC_ARG_ERROR)
-                return
+                throw CAPPluginError("Album doesn't support adding content (is this a smart album?)", code: EC_ARG_ERROR)
             }
         }
 
@@ -355,8 +346,8 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
         })
     }
         
-    @objc func getAlbumsPath(_ call: CAPPluginCall) {
-        call.unimplemented("Not implemented on iOS.")
+    func getAlbumsPath(_ call: CAPPluginCall) throws {
+        throw CAPPluginError.unimplemented("Not implemented on iOS.")
     }
     
     func getPHAccessLevel(permission: AccessLevel) -> PHAccessLevel {
@@ -365,6 +356,19 @@ public class MediaPlugin: CAPPlugin, CAPBridgedPlugin {
             return PHAccessLevel.addOnly
         case .readWrite:
             return PHAccessLevel.readWrite
+        }
+    }
+
+    /// Returns once the app may use the photo library with `permission`, asking the user first if needed, or throws the
+    /// rejection the methods answer with when it may not.
+    func requireAuthorization(permission: AccessLevel) async throws {
+        let level = getPHAccessLevel(permission: permission)
+        var status = PHPhotoLibrary.authorizationStatus(for: level)
+        if status != PHAuthorizationStatus.authorized {
+            status = await PHPhotoLibrary.requestAuthorization(for: level)
+        }
+        guard status == PHAuthorizationStatus.authorized else {
+            throw CAPPluginError("Access to photos not allowed by user", code: EC_ACCESS_DENIED)
         }
     }
 

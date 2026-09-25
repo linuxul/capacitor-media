@@ -14,6 +14,7 @@ import com.getcapacitor.Logger
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginException
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
@@ -111,8 +112,7 @@ public class MediaPlugin : Plugin() {
     private fun permissionCallback(call: PluginCall) {
         if (!isStoragePermissionGranted) {
             Logger.debug(logTag, "User denied storage permission")
-            call.reject("Unable to complete operation; user denied permission request.", EC_ACCESS_DENIED)
-            return
+            throw PluginException("Unable to complete operation; user denied permission request.", EC_ACCESS_DENIED)
         }
 
         when (call.methodName) {
@@ -210,11 +210,7 @@ public class MediaPlugin : Plugin() {
 
     private fun saveMedia(call: PluginCall) {
         Log.d("DEBUG LOG", "___SAVE MEDIA TO ALBUM")
-        val inputPath = call.getString("path")
-        if (inputPath == null) {
-            call.reject("Input file path is required", EC_ARG_ERROR)
-            return
-        }
+        val inputPath = call.getString("path") ?: throw PluginException("Input file path is required", EC_ARG_ERROR)
 
         val inputFile =
             if (inputPath.startsWith("data:")) {
@@ -230,15 +226,13 @@ public class MediaPlugin : Plugin() {
         Log.d("SDK BUILD VERSION", Build.VERSION.SDK_INT.toString())
 
         if (album == null) {
-            call.reject("Album identifier required", EC_ARG_ERROR)
-            return
+            throw PluginException("Album identifier required", EC_ARG_ERROR)
         }
 
         val albumDir = File(album)
 
         if (!albumDir.exists() || !albumDir.isDirectory) {
-            call.reject("Album identifier does not exist, use getAlbums() to get", EC_ARG_ERROR)
-            return
+            throw PluginException("Album identifier does not exist, use getAlbums() to get", EC_ARG_ERROR)
         }
 
         Log.d("ENV LOG - ALBUM DIR", albumDir.toString())
@@ -342,12 +336,7 @@ public class MediaPlugin : Plugin() {
 
     private fun createAlbumWithPermission(call: PluginCall) {
         Log.d("DEBUG LOG", "___CREATE ALBUM")
-        val folderName = call.getString("name")
-
-        if (folderName == null) {
-            call.reject("Album name must be given!", EC_ARG_ERROR)
-            return
-        }
+        val folderName = call.getString("name") ?: throw PluginException("Album name must be given!", EC_ARG_ERROR)
 
         val f = File(albumsPath, folderName)
 
